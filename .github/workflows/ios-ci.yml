@@ -32,7 +32,7 @@ jobs:
       run: xcodebuild -version
 
     - name: Cache derived data
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/Library/Developer/Xcode/DerivedData
         key: ${{ runner.os }}-derived-data-${{ hashFiles('ios/**/*.pbxproj') }}
@@ -107,7 +107,7 @@ jobs:
 
     - name: Upload build artifacts
       if: github.event_name == 'push'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ios-build-artifacts
         path: |
@@ -185,7 +185,7 @@ jobs:
         fi
 
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: ios-test-results

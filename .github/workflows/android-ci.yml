@@ -28,7 +28,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
@@ -37,7 +37,7 @@ jobs:
       uses: android-actions/setup-android@v3
 
     - name: Cache Gradle packages
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.gradle/caches
@@ -67,7 +67,7 @@ jobs:
       run: ./gradlew jacocoTestReport
 
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: android-test-results
@@ -77,7 +77,7 @@ jobs:
         retention-days: 7
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: android/app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
         flags: android
@@ -97,7 +97,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
@@ -106,7 +106,7 @@ jobs:
       uses: android-actions/setup-android@v3
 
     - name: Cache Gradle packages
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.gradle/caches
@@ -136,7 +136,7 @@ jobs:
         fi
 
     - name: Upload APK artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: android-apk-${{ matrix.build-type }}
         path: |
@@ -153,7 +153,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
@@ -162,7 +162,7 @@ jobs:
       uses: android-actions/setup-android@v3
 
     - name: Cache Gradle packages
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.gradle/caches
@@ -205,7 +205,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
@@ -217,7 +217,7 @@ jobs:
         sudo udevadm trigger --name-match=kvm
 
     - name: Cache Gradle packages
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.gradle/caches
@@ -225,7 +225,7 @@ jobs:
         key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
 
     - name: Cache AVD
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       id: avd-cache
       with:
         path: |
@@ -263,7 +263,7 @@ jobs:
           ./gradlew connectedDebugAndroidTest
 
     - name: Upload instrumented test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: android-instrumented-test-results-api${{ matrix.api-level }}-${{ matrix.target }}
@@ -283,7 +283,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
@@ -292,7 +292,7 @@ jobs:
       uses: android-actions/setup-android@v3
 
     - name: Cache Gradle packages
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.gradle/caches
@@ -314,7 +314,7 @@ jobs:
         fi
 
     - name: Upload performance test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: android-performance-results
@@ -333,7 +333,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Download release APK
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: android-apk-release
         path: ./apk

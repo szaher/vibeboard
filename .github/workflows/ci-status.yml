@@ -61,7 +61,7 @@ jobs:
         echo "CI status summary created"
 
     - name: Upload status summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ci-status-summary
         path: ci-status.md
