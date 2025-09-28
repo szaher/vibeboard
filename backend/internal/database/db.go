@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/szaher/mobile-game/backend/internal/models"
-	"github.com/szaher/mobile-game/backend/pkg/config"
+	"github.com/szaher/vibeboard/backend/internal/models"
+	"github.com/szaher/vibeboard/backend/pkg/config"
 )
 
 type DB struct {

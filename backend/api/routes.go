@@ -2,9 +2,9 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/szaher/mobile-game/backend/internal/auth"
-	"github.com/szaher/mobile-game/backend/internal/database"
-	"github.com/szaher/mobile-game/backend/internal/websocket"
+	"github.com/szaher/vibeboard/backend/internal/auth"
+	"github.com/szaher/vibeboard/backend/internal/database"
+	"github.com/szaher/vibeboard/backend/internal/websocket"
 )
 
 func SetupRoutes(db *database.DB, jwtManager *auth.JWTManager, hub *websocket.Hub) *gin.Engine {

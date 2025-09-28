@@ -1,4 +1,4 @@
-module github.com/szaher/mobile-game/backend
+module github.com/szaher/vibeboard/backend
 
 go 1.21
 
