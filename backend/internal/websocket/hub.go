@@ -340,7 +340,9 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 func (c *Client) readPump() {
 	defer func() {
 		c.Hub.unregister <- c
-		c.Conn.Close()
+		if err := c.Conn.Close(); err != nil {
+			log.Printf("Error closing connection: %v", err)
+		}
 	}()
 
 	c.Conn.SetReadLimit(512)
@@ -349,8 +351,8 @@ func (c *Client) readPump() {
 	}
 	c.Conn.SetPongHandler(func(string) error {
 		if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-		log.Printf("Error setting read deadline: %v", err)
-	}
+			log.Printf("Error setting read deadline: %v", err)
+		}
 		c.mutex.Lock()
 		c.LastSeen = time.Now()
 		c.mutex.Unlock()
@@ -387,19 +389,21 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
 		ticker.Stop()
-		c.Conn.Close()
+		if err := c.Conn.Close(); err != nil {
+			log.Printf("Error closing connection: %v", err)
+		}
 	}()
 
 	for {
 		select {
 		case message, ok := <-c.Send:
 			if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-			return
-		}
+				return
+			}
 			if !ok {
 				if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
-				log.Printf("Error writing close message: %v", err)
-			}
+					log.Printf("Error writing close message: %v", err)
+				}
 				return
 			}
 
@@ -427,8 +431,8 @@ func (c *Client) writePump() {
 
 		case <-ticker.C:
 			if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-			return
-		}
+				return
+			}
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}

@@ -3,6 +3,7 @@ package game
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/szaher/vibeboard/backend/internal/models"
 )

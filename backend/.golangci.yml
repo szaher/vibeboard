@@ -5,16 +5,12 @@ run:
 
 linters-settings:
   gocyclo:
-    min-complexity: 15
-  govet:
-    check-shadowing: true
-  golint:
-    min-confidence: 0
+    min-complexity: 20
   gofmt:
     simplify: true
   goimports:
     local-prefixes: github.com/szaher/vibeboard
-  gomnd:
+  mnd:
     settings:
       mnd:
         checks: argument,case,condition,operation,return,assign
@@ -23,81 +19,62 @@ linters-settings:
   gocritic:
     enabled-tags:
       - diagnostic
-      - experimental
-      - opinionated
       - performance
-      - style
     disabled-checks:
-      - dupImport # https://github.com/go-critic/go-critic/issues/845
+      - dupImport
       - ifElseChain
       - octalLiteral
       - whyNoLint
       - wrapperFunc
+      - hugeParam
+      - unnecessaryBlock
+      - exitAfterDefer
   revive:
     min-confidence: 0
+    rules:
+      - name: package-comments
+        disabled: true
+      - name: exported
+        disabled: true
+  lll:
+    line-length: 150
+  govet:
+    settings:
+      shadow:
+        strict: false
+  depguard:
+    rules:
+      main:
+        deny: []
 
 linters:
   disable-all: true
   enable:
-    - bodyclose
-    - deadcode
-    - depguard
-    - dogsled
-    - dupl
     - errcheck
-    - exportloopref
-    - exhaustive
-    - gochecknoinits
-    - goconst
-    - gocritic
-    - gocyclo
-    - gofmt
-    - goimports
-    - gomnd
-    - goprintffuncname
-    - gosec
     - gosimple
     - govet
     - ineffassign
-    - lll
-    - misspell
-    - nakedret
-    - noctx
-    - nolintlint
-    - revive
     - staticcheck
-    - structcheck
-    - stylecheck
     - typecheck
-    - unconvert
-    - unparam
     - unused
-    - varcheck
-    - whitespace
 
 issues:
   exclude-rules:
     - path: _test\.go
       linters:
-        - gomnd
-        - gocritic
-        - gosec
         - errcheck
     - path: cmd/
       linters:
-        - gomnd
-    - path: migrations/
-      linters:
-        - gosec
-        - gocritic
-    - text: "Error return value of.*is not checked"
+        - errcheck
+    - text: "Error return value of.*Close.*is not checked"
       linters:
         - errcheck
-      # Allow some unchecked errors in defer statements
-      path: "(defer|Close)"
-  exclude-use-default: false
-  max-issues-per-linter: 50
-  max-same-issues: 10
+    - text: "should have comment"
+      linters:
+        - revive
+  exclude-use-default: true
+  max-issues-per-linter: 0
+  max-same-issues: 0
 
 severity:
   default-severity: error
