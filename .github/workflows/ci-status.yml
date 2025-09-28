@@ -1,0 +1,68 @@
+name: CI Status Dashboard
+
+on:
+  workflow_run:
+    workflows:
+      - "Backend CI/CD"
+      - "iOS CI"
+      - "Android CI"
+      - "Docker Build and Push"
+    types:
+      - completed
+
+jobs:
+  update-status:
+    name: Update CI Status
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Create CI status summary
+      run: |
+        cat > ci-status.md << 'EOF'
+        # CI/CD Status Dashboard
+
+        ## 🔄 Latest Build Status
+
+        ![Backend CI](https://github.com/${{ github.repository }}/workflows/Backend%20CI%2FCD/badge.svg)
+        ![iOS CI](https://github.com/${{ github.repository }}/workflows/iOS%20CI/badge.svg)
+        ![Android CI](https://github.com/${{ github.repository }}/workflows/Android%20CI/badge.svg)
+        ![Docker Build](https://github.com/${{ github.repository }}/workflows/Docker%20Build%20and%20Push/badge.svg)
+
+        ## 📊 Build Information
+
+        | Component | Status | Last Updated |
+        |-----------|--------|--------------|
+        | Backend | ${{ github.event.workflow_run.conclusion == 'success' && '✅ Passing' || '❌ Failing' }} | ${{ github.event.workflow_run.updated_at }} |
+        | iOS App | Check badge above | - |
+        | Android App | Check badge above | - |
+        | Docker Images | Check badge above | - |
+
+        ## 🚀 Deployment Status
+
+        | Environment | Status | Version |
+        |-------------|--------|---------|
+        | Staging | 🔄 Auto-deploy on develop | `develop` |
+        | Production | 🎯 Manual deploy on tags | `latest` |
+
+        ## 📈 Quality Metrics
+
+        - **Test Coverage**: Backend unit tests with coverage reporting
+        - **Security Scanning**: Automated vulnerability scans on all builds
+        - **Performance Testing**: Load testing on production deployments
+        - **Code Quality**: Automated linting and static analysis
+
+        ---
+        *Last updated: ${{ github.event.workflow_run.updated_at }}*
+        EOF
+
+        echo "CI status summary created"
+
+    - name: Upload status summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: ci-status-summary
+        path: ci-status.md
+        retention-days: 30

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>ENVIRONMENT</key>
+    <string>production</string>
+    <key>BASE_URL</key>
+    <string>https://api.vibearcade.com/api/v1</string>
+    <key>WEBSOCKET_URL</key>
+    <string>wss://api.vibearcade.com/api/v1/ws</string>
+    <key>ENABLE_LOGGING</key>
+    <false/>
+    <key>ENABLE_DEBUG_MENU</key>
+    <false/>
+</dict>
+</plist>

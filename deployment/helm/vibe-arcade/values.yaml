@@ -1,0 +1,189 @@
+# Vibe Arcade Helm Chart Values
+
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Application configuration
+app:
+  name: vibe-arcade
+  namespace: vibe-arcade
+  domain: vibearcade.com
+
+# Backend service configuration
+backend:
+  replicaCount: 3
+
+  image:
+    repository: vibe-arcade/backend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8181
+    targetPort: 8181
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Environment variables
+  env:
+    SERVER_PORT: "8181"
+    JWT_ACCESS_TTL: "15m"
+    JWT_REFRESH_TTL: "168h"
+    ENVIRONMENT: "production"
+
+  # Secret environment variables (use external secrets)
+  secretEnv:
+    JWT_SECRET: ""
+    DB_PASSWORD: ""
+    REDIS_PASSWORD: ""
+
+  # Health checks
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8181
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8181
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/websocket-services: "vibe-arcade-backend"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  hosts:
+    - host: api.vibearcade.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: vibe-arcade-backend
+            port: 8181
+  tls:
+    - secretName: vibe-arcade-tls
+      hosts:
+        - api.vibearcade.com
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "postgres"
+    username: "vibe_arcade"
+    password: "vibe_arcade_password"
+    database: "vibe_arcade"
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: ""
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+
+# Redis configuration
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClass: ""
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring
+    labels:
+      app: vibe-arcade
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod Security Context
+podSecurityContext:
+  fsGroup: 2000
+
+# Security Context
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Network Policy
+networkPolicy:
+  enabled: false
+
+# External Secrets
+externalSecrets:
+  enabled: false
+  secretStore:
+    name: "vault-backend"
+    kind: "SecretStore"

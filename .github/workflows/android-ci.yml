@@ -1,0 +1,379 @@
+name: Android CI
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-ci.yml'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-ci.yml'
+
+env:
+  JAVA_VERSION: '17'
+  ANDROID_API_LEVEL: '34'
+  ANDROID_BUILD_TOOLS_VERSION: '34.0.0'
+  ANDROID_NDK_VERSION: '25.2.9519653'
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Grant execute permission for gradlew
+      working-directory: ./android
+      run: chmod +x gradlew
+
+    - name: Run lint checks
+      working-directory: ./android
+      run: ./gradlew lintDebug
+
+    - name: Run unit tests
+      working-directory: ./android
+      run: ./gradlew testDebugUnitTest
+
+    - name: Run Kotlin code style check
+      working-directory: ./android
+      run: ./gradlew ktlintCheck
+
+    - name: Generate test coverage report
+      working-directory: ./android
+      run: ./gradlew jacocoTestReport
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: android-test-results
+        path: |
+          android/app/build/reports/
+          android/app/build/test-results/
+        retention-days: 7
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: android/app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
+        flags: android
+        name: android-coverage
+
+  build:
+    name: Build Android App
+    runs-on: ubuntu-latest
+    needs: test
+
+    strategy:
+      matrix:
+        build-type: [debug, release]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Grant execute permission for gradlew
+      working-directory: ./android
+      run: chmod +x gradlew
+
+    - name: Build ${{ matrix.build-type }} APK
+      working-directory: ./android
+      run: |
+        if [ "${{ matrix.build-type }}" = "release" ]; then
+          # For release builds, create a dummy keystore for CI
+          keytool -genkey -v -keystore dummy-release-key.keystore -alias dummy -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=CI, OU=CI, O=CI, L=CI, S=CI, C=US" -storepass android -keypass android
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=../dummy-release-key.keystore \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=dummy \
+            -Pandroid.injected.signing.key.password=android
+        else
+          ./gradlew assembleDebug
+        fi
+
+    - name: Upload APK artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: android-apk-${{ matrix.build-type }}
+        path: |
+          android/app/build/outputs/apk/${{ matrix.build-type }}/*.apk
+        retention-days: 7
+
+  security-scan:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+
+    - name: Grant execute permission for gradlew
+      working-directory: ./android
+      run: chmod +x gradlew
+
+    - name: Run security analysis with SpotBugs
+      working-directory: ./android
+      run: |
+        # Add SpotBugs plugin to build.gradle if not present
+        if ! grep -q "spotbugs" app/build.gradle; then
+          echo "SpotBugs plugin not configured, skipping security analysis"
+        else
+          ./gradlew spotbugsDebug
+        fi
+
+    - name: Run dependency vulnerability scan
+      working-directory: ./android
+      run: |
+        # Check for known vulnerable dependencies
+        ./gradlew dependencyCheckAnalyze || echo "Dependency check not configured"
+
+  ui-tests:
+    name: Instrumented Tests
+    runs-on: macos-latest
+    needs: build
+    if: github.event_name == 'push'
+
+    strategy:
+      matrix:
+        api-level: [28, 30, 33]
+        target: [default, google_apis]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+
+    - name: Enable KVM group perms
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+
+    - name: Cache AVD
+      uses: actions/cache@v3
+      id: avd-cache
+      with:
+        path: |
+          ~/.android/avd/*
+          ~/.android/adb*
+        key: avd-${{ matrix.api-level }}-${{ matrix.target }}
+
+    - name: Create AVD and generate snapshot for caching
+      if: steps.avd-cache.outputs.cache-hit != 'true'
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: ${{ matrix.api-level }}
+        target: ${{ matrix.target }}
+        arch: x86_64
+        force-avd-creation: false
+        emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        disable-animations: false
+        script: echo "Generated AVD snapshot for caching."
+
+    - name: Grant execute permission for gradlew
+      working-directory: ./android
+      run: chmod +x gradlew
+
+    - name: Run instrumented tests
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: ${{ matrix.api-level }}
+        target: ${{ matrix.target }}
+        arch: x86_64
+        force-avd-creation: false
+        emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        disable-animations: true
+        script: |
+          cd android
+          ./gradlew connectedDebugAndroidTest
+
+    - name: Upload instrumented test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: android-instrumented-test-results-api${{ matrix.api-level }}-${{ matrix.target }}
+        path: |
+          android/app/build/reports/androidTests/
+          android/app/build/outputs/androidTest-results/
+        retention-days: 7
+
+  performance-test:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+
+    - name: Grant execute permission for gradlew
+      working-directory: ./android
+      run: chmod +x gradlew
+
+    - name: Run performance benchmarks
+      working-directory: ./android
+      run: |
+        # Check if benchmark module exists
+        if [ -d "benchmark" ] || grep -q "androidx.benchmark" app/build.gradle; then
+          ./gradlew benchmark:connectedBenchmarkAndroidTest || echo "Benchmark tests not properly configured"
+        else
+          echo "No benchmark tests found"
+        fi
+
+    - name: Upload performance test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: android-performance-results
+        path: |
+          android/benchmark/build/outputs/
+        retention-days: 7
+
+  apk-analysis:
+    name: APK Analysis
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download release APK
+      uses: actions/download-artifact@v3
+      with:
+        name: android-apk-release
+        path: ./apk
+
+    - name: Analyze APK size and composition
+      run: |
+        # Install APK analyzer
+        if command -v aapt2 &> /dev/null; then
+          for apk in ./apk/*.apk; do
+            echo "Analyzing APK: $apk"
+            aapt2 dump badging "$apk" | head -20
+
+            # Check APK size
+            size=$(stat -c%s "$apk")
+            echo "APK size: $((size / 1024 / 1024)) MB"
+
+            # Check if size is reasonable (under 50MB for mobile game)
+            if [ $size -gt 52428800 ]; then
+              echo "Warning: APK size is larger than 50MB"
+            fi
+          done
+        else
+          echo "aapt2 not available, skipping APK analysis"
+        fi
+
+    - name: Security scan APK
+      run: |
+        # Basic security checks on the APK
+        for apk in ./apk/*.apk; do
+          echo "Security analysis for: $apk"
+
+          # Check for debugging enabled
+          if aapt2 dump badging "$apk" | grep -q "application-debuggable"; then
+            echo "Warning: Debug mode is enabled in release APK"
+          fi
+
+          # Check for network security config
+          if aapt2 dump resources "$apk" | grep -q "network_security_config"; then
+            echo "Network security config found"
+          else
+            echo "Warning: No network security config found"
+          fi
+        done

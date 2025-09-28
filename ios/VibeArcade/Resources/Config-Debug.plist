@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>ENVIRONMENT</key>
+    <string>development</string>
+    <key>BASE_URL</key>
+    <string>http://localhost:8181/api/v1</string>
+    <key>WEBSOCKET_URL</key>
+    <string>ws://localhost:8181/api/v1/ws</string>
+    <key>ENABLE_LOGGING</key>
+    <true/>
+    <key>ENABLE_DEBUG_MENU</key>
+    <true/>
+</dict>
+</plist>

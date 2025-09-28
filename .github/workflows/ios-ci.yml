@@ -1,0 +1,232 @@
+name: iOS CI
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+
+env:
+  XCODE_VERSION: '15.0'
+  IOS_DESTINATION: 'platform=iOS Simulator,name=iPhone 15,OS=17.0'
+
+jobs:
+  build-and-test:
+    name: Build and Test iOS App
+    runs-on: macos-14
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode version
+      run: sudo xcode-select -switch /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
+
+    - name: Show Xcode version
+      run: xcodebuild -version
+
+    - name: Cache derived data
+      uses: actions/cache@v3
+      with:
+        path: ~/Library/Developer/Xcode/DerivedData
+        key: ${{ runner.os }}-derived-data-${{ hashFiles('ios/**/*.pbxproj') }}
+        restore-keys: |
+          ${{ runner.os }}-derived-data-
+
+    - name: Install dependencies
+      working-directory: ./ios
+      run: |
+        # Check if Podfile exists and install CocoaPods dependencies
+        if [ -f "Podfile" ]; then
+          sudo gem install cocoapods
+          pod install
+        fi
+
+    - name: Lint Swift code
+      working-directory: ./ios
+      run: |
+        # Install SwiftLint if not available
+        if ! command -v swiftlint &> /dev/null; then
+          brew install swiftlint
+        fi
+        swiftlint --strict
+
+    - name: Build for testing
+      working-directory: ./ios
+      run: |
+        xcodebuild \
+          -project VibeArcade.xcodeproj \
+          -scheme VibeArcade \
+          -destination '${{ env.IOS_DESTINATION }}' \
+          -configuration Debug \
+          build-for-testing \
+          CODE_SIGNING_ALLOWED=NO \
+          ONLY_ACTIVE_ARCH=YES
+
+    - name: Run unit tests
+      working-directory: ./ios
+      run: |
+        xcodebuild \
+          -project VibeArcade.xcodeproj \
+          -scheme VibeArcade \
+          -destination '${{ env.IOS_DESTINATION }}' \
+          -configuration Debug \
+          test-without-building \
+          CODE_SIGNING_ALLOWED=NO \
+          ONLY_ACTIVE_ARCH=YES
+
+    - name: Build for release
+      working-directory: ./ios
+      run: |
+        xcodebuild \
+          -project VibeArcade.xcodeproj \
+          -scheme VibeArcade \
+          -destination '${{ env.IOS_DESTINATION }}' \
+          -configuration Release \
+          build \
+          CODE_SIGNING_ALLOWED=NO \
+          ONLY_ACTIVE_ARCH=YES
+
+    - name: Archive app
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      working-directory: ./ios
+      run: |
+        xcodebuild \
+          -project VibeArcade.xcodeproj \
+          -scheme VibeArcade \
+          -archivePath ./build/VibeArcade.xcarchive \
+          -configuration Release \
+          archive \
+          CODE_SIGNING_ALLOWED=NO
+
+    - name: Upload build artifacts
+      if: github.event_name == 'push'
+      uses: actions/upload-artifact@v3
+      with:
+        name: ios-build-artifacts
+        path: |
+          ios/build/
+          ios/DerivedData/
+        retention-days: 7
+
+  analyze:
+    name: Static Analysis
+    runs-on: macos-14
+    needs: build-and-test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode version
+      run: sudo xcode-select -switch /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
+
+    - name: Run static analyzer
+      working-directory: ./ios
+      run: |
+        xcodebuild \
+          -project VibeArcade.xcodeproj \
+          -scheme VibeArcade \
+          -destination '${{ env.IOS_DESTINATION }}' \
+          -configuration Debug \
+          analyze \
+          CODE_SIGNING_ALLOWED=NO \
+          ONLY_ACTIVE_ARCH=YES
+
+    - name: Check for security issues
+      working-directory: ./ios
+      run: |
+        # Run security-focused analysis
+        if command -v semgrep &> /dev/null; then
+          semgrep --config=auto VibeArcade/
+        else
+          echo "Semgrep not available, skipping security analysis"
+        fi
+
+  ui-tests:
+    name: UI Tests
+    runs-on: macos-14
+    needs: build-and-test
+    if: github.event_name == 'push'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode version
+      run: sudo xcode-select -switch /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
+
+    - name: Start iOS Simulator
+      run: |
+        xcrun simctl boot "iPhone 15" || true
+        xcrun simctl list devices
+
+    - name: Build and run UI tests
+      working-directory: ./ios
+      run: |
+        if xcodebuild -list -project VibeArcade.xcodeproj | grep -q "VibeArcadeUITests"; then
+          xcodebuild \
+            -project VibeArcade.xcodeproj \
+            -scheme VibeArcade \
+            -destination '${{ env.IOS_DESTINATION }}' \
+            -configuration Debug \
+            test \
+            -only-testing:VibeArcadeUITests \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES
+        else
+          echo "No UI tests found, skipping UI test execution"
+        fi
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: ios-test-results
+        path: |
+          ios/build/Logs/Test/
+          ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/
+        retention-days: 7
+
+  compatibility-test:
+    name: iOS Version Compatibility
+    runs-on: macos-14
+    needs: build-and-test
+    if: github.event_name == 'push'
+
+    strategy:
+      matrix:
+        ios-version: ['16.0', '17.0']
+        device: ['iPhone 14', 'iPhone 15']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode version
+      run: sudo xcode-select -switch /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
+
+    - name: Test on ${{ matrix.device }} iOS ${{ matrix.ios-version }}
+      working-directory: ./ios
+      run: |
+        DESTINATION="platform=iOS Simulator,name=${{ matrix.device }},OS=${{ matrix.ios-version }}"
+
+        # Check if simulator is available
+        if xcrun simctl list devices available | grep -q "${{ matrix.device }} (${{ matrix.ios-version }})"; then
+          xcodebuild \
+            -project VibeArcade.xcodeproj \
+            -scheme VibeArcade \
+            -destination "$DESTINATION" \
+            -configuration Debug \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES
+        else
+          echo "Simulator ${{ matrix.device }} with iOS ${{ matrix.ios-version }} not available"
+        fi

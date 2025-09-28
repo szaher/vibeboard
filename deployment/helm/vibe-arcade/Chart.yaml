@@ -1,0 +1,30 @@
+apiVersion: v2
+name: vibe-arcade
+description: A Helm chart for Vibe Arcade gaming platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: postgresql
+    version: "12.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "18.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+
+keywords:
+  - gaming
+  - websocket
+  - real-time
+  - mobile
+
+home: https://github.com/szaher/mobile-game
+sources:
+  - https://github.com/szaher/mobile-game
+
+maintainers:
+  - name: Vibe Arcade Team
+    email: team@vibearcade.com

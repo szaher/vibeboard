@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8181:8181"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=vibe_arcade
+      - DB_PASSWORD=vibe_arcade_password
+      - DB_NAME=vibe_arcade
+      - DB_SSL_MODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - SERVER_PORT=8181
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - vibe-arcade-network
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=vibe_arcade
+      - POSTGRES_USER=vibe_arcade
+      - POSTGRES_PASSWORD=vibe_arcade_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/migrations.sql:/docker-entrypoint-initdb.d/migrations.sql
+    networks:
+      - vibe-arcade-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - vibe-arcade-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  vibe-arcade-network:
+    driver: bridge

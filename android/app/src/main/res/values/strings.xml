@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vibe Arcade</string>
+
+    <!-- Authentication -->
+    <string name="welcome_title">Welcome to Vibe Arcade</string>
+    <string name="email">Email</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="login">Login</string>
+    <string name="register">Sign Up</string>
+    <string name="create_account">Create Account</string>
+    <string name="no_account">Don\'t have an account? Sign up</string>
+    <string name="have_account">Already have an account? Sign in</string>
+
+    <!-- Games -->
+    <string name="dominoes">Dominoes</string>
+    <string name="chess">Chess</string>
+    <string name="dominoes_subtitle">Classic tile-matching game</string>
+    <string name="chess_subtitle">Strategic board game</string>
+    <string name="play">Play</string>
+    <string name="quick_match">Quick Match</string>
+    <string name="create_game">Create Game</string>
+
+    <!-- Stats -->
+    <string name="games_played">Games Played</string>
+    <string name="win_rate">Win Rate</string>
+    <string name="rating">Rating</string>
+    <string name="my_games">My Games</string>
+    <string name="profile_stats">Profile &amp; Stats</string>
+
+    <!-- Navigation -->
+    <string name="choose_game">Choose Your Game</string>
+    <string name="quick_actions">Quick Actions</string>
+
+    <!-- Errors -->
+    <string name="error">Error</string>
+    <string name="login_failed">Login Failed</string>
+    <string name="registration_failed">Registration Failed</string>
+    <string name="fill_all_fields">Please fill in all fields</string>
+    <string name="invalid_email">Please enter a valid email address</string>
+    <string name="username_too_short">Username must be at least 3 characters</string>
+    <string name="password_too_short">Password must be at least 6 characters</string>
+    <string name="passwords_dont_match">Passwords do not match</string>
+
+    <!-- General -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="loading">Loading...</string>
+    <string name="retry">Retry</string>
+</resources>

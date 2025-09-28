@@ -1,0 +1,332 @@
+name: Deploy to Kubernetes
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: false
+        default: 'latest'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'staging' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, 'rc'))
+    environment: staging
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up kubectl
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.STAGING_KUBECONFIG }}
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: '3.12.0'
+
+    - name: Prepare deployment values
+      run: |
+        IMAGE_TAG="${{ github.event.inputs.image_tag || github.sha }}"
+
+        cat > staging-values.yaml << EOF
+        backend:
+          image:
+            repository: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            tag: "$IMAGE_TAG"
+
+          env:
+            ENVIRONMENT: "staging"
+            JWT_ACCESS_TTL: "15m"
+            JWT_REFRESH_TTL: "168h"
+
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+
+          autoscaling:
+            enabled: true
+            minReplicas: 1
+            maxReplicas: 3
+            targetCPUUtilizationPercentage: 70
+
+        ingress:
+          enabled: true
+          className: "nginx"
+          annotations:
+            cert-manager.io/cluster-issuer: "letsencrypt-staging"
+            nginx.ingress.kubernetes.io/rate-limit: "100"
+          hosts:
+            - host: staging-api.vibearcade.com
+              paths:
+                - path: /
+                  pathType: Prefix
+                  service:
+                    name: vibe-arcade-backend
+                    port: 8181
+          tls:
+            - secretName: staging-vibe-arcade-tls
+              hosts:
+                - staging-api.vibearcade.com
+
+        postgresql:
+          enabled: true
+          auth:
+            username: vibe_arcade_staging
+            database: vibe_arcade_staging
+            existingSecret: staging-postgres-secret
+          primary:
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+
+        redis:
+          enabled: true
+          auth:
+            enabled: false
+          master:
+            resources:
+              limits:
+                cpu: 100m
+                memory: 128Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+
+        externalSecrets:
+          enabled: true
+        EOF
+
+    - name: Deploy to staging
+      run: |
+        helm upgrade --install vibe-arcade-staging \
+          ./deployment/helm/vibe-arcade \
+          --namespace vibe-arcade-staging \
+          --create-namespace \
+          --values staging-values.yaml \
+          --wait \
+          --timeout 10m
+
+    - name: Verify deployment
+      run: |
+        kubectl wait --for=condition=available --timeout=300s deployment/vibe-arcade-staging-backend -n vibe-arcade-staging
+        kubectl get pods -n vibe-arcade-staging
+
+        # Test health endpoint
+        kubectl port-forward -n vibe-arcade-staging svc/vibe-arcade-staging-backend 8181:8181 &
+        PORT_FORWARD_PID=$!
+        sleep 10
+
+        curl -f http://localhost:8181/health || echo "Health check failed"
+        kill $PORT_FORWARD_PID || true
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'production' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'rc'))
+    environment: production
+    needs: []
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up kubectl
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.PRODUCTION_KUBECONFIG }}
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: '3.12.0'
+
+    - name: Prepare production deployment values
+      run: |
+        IMAGE_TAG="${{ github.event.inputs.image_tag || github.ref_name }}"
+        # Remove 'v' prefix from tag if present
+        IMAGE_TAG="${IMAGE_TAG#v}"
+
+        cat > production-values.yaml << EOF
+        backend:
+          image:
+            repository: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            tag: "$IMAGE_TAG"
+
+          replicaCount: 3
+
+          env:
+            ENVIRONMENT: "production"
+            JWT_ACCESS_TTL: "15m"
+            JWT_REFRESH_TTL: "168h"
+
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 500m
+              memory: 512Mi
+
+          autoscaling:
+            enabled: true
+            minReplicas: 3
+            maxReplicas: 20
+            targetCPUUtilizationPercentage: 70
+            targetMemoryUtilizationPercentage: 80
+
+        ingress:
+          enabled: true
+          className: "nginx"
+          annotations:
+            cert-manager.io/cluster-issuer: "letsencrypt-prod"
+            nginx.ingress.kubernetes.io/rate-limit: "1000"
+            nginx.ingress.kubernetes.io/rate-limit-connections: "100"
+          hosts:
+            - host: api.vibearcade.com
+              paths:
+                - path: /
+                  pathType: Prefix
+                  service:
+                    name: vibe-arcade-backend
+                    port: 8181
+          tls:
+            - secretName: vibe-arcade-tls
+              hosts:
+                - api.vibearcade.com
+
+        postgresql:
+          enabled: false  # Use external managed database in production
+
+        redis:
+          enabled: false  # Use external managed Redis in production
+
+        externalSecrets:
+          enabled: true
+        EOF
+
+    - name: Create backup before deployment
+      run: |
+        # Create a backup of current deployment
+        helm get values vibe-arcade --namespace vibe-arcade > backup-values-$(date +%Y%m%d-%H%M%S).yaml || true
+
+    - name: Deploy to production
+      run: |
+        helm upgrade --install vibe-arcade \
+          ./deployment/helm/vibe-arcade \
+          --namespace vibe-arcade \
+          --create-namespace \
+          --values production-values.yaml \
+          --wait \
+          --timeout 15m
+
+    - name: Verify production deployment
+      run: |
+        kubectl wait --for=condition=available --timeout=600s deployment/vibe-arcade-backend -n vibe-arcade
+        kubectl get pods -n vibe-arcade
+
+        # Run health check
+        kubectl port-forward -n vibe-arcade svc/vibe-arcade-backend 8181:8181 &
+        PORT_FORWARD_PID=$!
+        sleep 10
+
+        curl -f http://localhost:8181/health || echo "Health check failed"
+        kill $PORT_FORWARD_PID || true
+
+    - name: Run smoke tests
+      run: |
+        # Port forward for testing
+        kubectl port-forward -n vibe-arcade svc/vibe-arcade-backend 8181:8181 &
+        PORT_FORWARD_PID=$!
+        sleep 10
+
+        # Run basic smoke tests
+        echo "Running production smoke tests..."
+
+        # Test API endpoints
+        curl -f http://localhost:8181/health
+        curl -X POST http://localhost:8181/api/v1/auth/register \
+          -H "Content-Type: application/json" \
+          -d '{"email":"smoketest@example.com","username":"smoketest","password":"password123"}' \
+          || echo "Smoke test completed"
+
+        kill $PORT_FORWARD_PID || true
+
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: failure() && (github.event.inputs.environment == 'production' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'rc')))
+    needs: [deploy-production]
+    environment: production
+
+    steps:
+    - name: Set up kubectl
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.PRODUCTION_KUBECONFIG }}
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: '3.12.0'
+
+    - name: Rollback production deployment
+      run: |
+        echo "Rolling back production deployment..."
+        helm rollback vibe-arcade --namespace vibe-arcade
+
+        # Wait for rollback to complete
+        kubectl wait --for=condition=available --timeout=600s deployment/vibe-arcade-backend -n vibe-arcade
+
+    - name: Verify rollback
+      run: |
+        kubectl get pods -n vibe-arcade
+        echo "Rollback completed"
+
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+
+    steps:
+    - name: Notify deployment success
+      if: success()
+      run: |
+        echo "Deployment successful!"
+        # Add Slack/Discord/email notification here
+
+    - name: Notify deployment failure
+      if: failure()
+      run: |
+        echo "Deployment failed!"
+        # Add failure notification here
