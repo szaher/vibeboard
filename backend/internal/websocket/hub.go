@@ -344,9 +344,13 @@ func (c *Client) readPump() {
 	}()
 
 	c.Conn.SetReadLimit(512)
-	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		log.Printf("Error setting read deadline: %v", err)
+	}
 	c.Conn.SetPongHandler(func(string) error {
-		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		log.Printf("Error setting read deadline: %v", err)
+	}
 		c.mutex.Lock()
 		c.LastSeen = time.Now()
 		c.mutex.Unlock()
@@ -389,9 +393,13 @@ func (c *Client) writePump() {
 	for {
 		select {
 		case message, ok := <-c.Send:
-			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			return
+		}
 			if !ok {
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+				log.Printf("Error writing close message: %v", err)
+			}
 				return
 			}
 
@@ -399,12 +407,18 @@ func (c *Client) writePump() {
 			if err != nil {
 				return
 			}
-			w.Write(message)
+			if _, err := w.Write(message); err != nil {
+				return
+			}
 
 			n := len(c.Send)
 			for i := 0; i < n; i++ {
-				w.Write([]byte{'\n'})
-				w.Write(<-c.Send)
+				if _, err := w.Write([]byte{'\n'}); err != nil {
+					return
+				}
+				if _, err := w.Write(<-c.Send); err != nil {
+					return
+				}
 			}
 
 			if err := w.Close(); err != nil {
@@ -412,7 +426,9 @@ func (c *Client) writePump() {
 			}
 
 		case <-ticker.C:
-			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			return
+		}
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -424,12 +440,16 @@ func (c *Client) handleMessage(message Message) {
 	switch message.Type {
 	case MessageTypeJoinRoom:
 		if message.RoomID != "" {
-			c.Hub.JoinRoom(c.ID, message.RoomID)
+			if err := c.Hub.JoinRoom(c.ID, message.RoomID); err != nil {
+				log.Printf("Error joining room: %v", err)
+			}
 		}
 
 	case MessageTypeLeaveRoom:
 		if message.RoomID != "" {
-			c.Hub.LeaveRoom(c.ID, message.RoomID)
+			if err := c.Hub.LeaveRoom(c.ID, message.RoomID); err != nil {
+				log.Printf("Error leaving room: %v", err)
+			}
 		}
 
 	case MessageTypeGameMove:

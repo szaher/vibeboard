@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -209,7 +210,11 @@ func (db *DB) GetGames(status, gameType string, limit, offset int) ([]*models.Ga
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Error closing rows: %v", err)
+		}
+	}()
 
 	var games []*models.Game
 	for rows.Next() {
@@ -248,7 +253,11 @@ func (db *DB) GetGameMoves(gameID uuid.UUID) ([]*models.Move, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Error closing rows: %v", err)
+		}
+	}()
 
 	var moves []*models.Move
 	for rows.Next() {
