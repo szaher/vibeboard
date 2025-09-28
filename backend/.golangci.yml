@@ -38,10 +38,6 @@ linters-settings:
         disabled: true
   lll:
     line-length: 150
-  govet:
-    settings:
-      shadow:
-        strict: false
   depguard:
     rules:
       main:
