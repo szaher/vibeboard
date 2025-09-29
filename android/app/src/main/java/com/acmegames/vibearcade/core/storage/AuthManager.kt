@@ -8,6 +8,9 @@ import com.acmegames.vibearcade.core.models.*
 import com.acmegames.vibearcade.core.networking.NetworkService
 import com.acmegames.vibearcade.core.networking.handleResponse
 import com.google.gson.Gson
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,7 +43,7 @@ class AuthManager @Inject constructor(
 
     init {
         // Load stored authentication state
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+        CoroutineScope(Dispatchers.Main).launch {
             loadStoredAuth()
         }
     }
