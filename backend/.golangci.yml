@@ -11,11 +11,9 @@ linters-settings:
   goimports:
     local-prefixes: github.com/szaher/vibeboard
   mnd:
-    settings:
-      mnd:
-        checks: argument,case,condition,operation,return,assign
-        ignored-numbers: 0,1,2,3
-        ignored-functions: strconv.FormatInt,strconv.ParseInt
+    checks: argument,case,condition,operation,return,assign
+    ignored-numbers: 0,1,2,3
+    ignored-functions: strconv.FormatInt,strconv.ParseInt
   gocritic:
     enabled-tags:
       - diagnostic
@@ -30,7 +28,6 @@ linters-settings:
       - unnecessaryBlock
       - exitAfterDefer
   revive:
-    min-confidence: 0
     rules:
       - name: package-comments
         disabled: true
