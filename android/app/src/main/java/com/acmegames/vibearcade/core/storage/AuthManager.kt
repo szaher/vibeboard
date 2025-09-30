@@ -23,7 +23,7 @@ import javax.inject.Singleton
 @Singleton
 class AuthManager @Inject constructor(
     private val dataStore: DataStore<Preferences>,
-    private val networkService: NetworkService,
+    private val networkService: dagger.Lazy<NetworkService>,
     private val gson: Gson
 ) {
     private val _isAuthenticated = MutableStateFlow(false)
@@ -68,7 +68,7 @@ class AuthManager @Inject constructor(
     suspend fun login(email: String, password: String): Result<Unit> {
         val request = LoginRequest(email, password)
         return try {
-            val response = networkService.apiService.login(request).handleResponse()
+            val response = networkService.get().apiService.login(request).handleResponse()
             response.fold(
                 onSuccess = { authResponse ->
                     handleAuthSuccess(authResponse)
@@ -84,7 +84,7 @@ class AuthManager @Inject constructor(
     suspend fun register(email: String, username: String, password: String): Result<Unit> {
         val request = RegisterRequest(email, username, password)
         return try {
-            val response = networkService.apiService.register(request).handleResponse()
+            val response = networkService.get().apiService.register(request).handleResponse()
             response.fold(
                 onSuccess = { authResponse ->
                     handleAuthSuccess(authResponse)
@@ -102,7 +102,7 @@ class AuthManager @Inject constructor(
 
         return try {
             val request = RefreshTokenRequest(refreshToken)
-            val response = networkService.apiService.refreshToken(request).handleResponse()
+            val response = networkService.get().apiService.refreshToken(request).handleResponse()
             response.fold(
                 onSuccess = { tokenResponse ->
                     storeTokens(tokenResponse.tokens)
@@ -126,7 +126,7 @@ class AuthManager @Inject constructor(
 
     suspend fun loadProfile(): Result<ProfileResponse> {
         return try {
-            val response = networkService.apiService.getProfile().handleResponse()
+            val response = networkService.get().apiService.getProfile().handleResponse()
             response.fold(
                 onSuccess = { profileResponse ->
                     _currentUser.value = profileResponse.user

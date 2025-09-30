@@ -14,7 +14,7 @@ import javax.inject.Singleton
 
 @Singleton
 class NetworkService @Inject constructor(
-    private val authManager: AuthManager
+    private val authManager: dagger.Lazy<AuthManager>
 ) {
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
@@ -29,7 +29,7 @@ class NetworkService @Inject constructor(
         if (skipAuth) {
             chain.proceed(originalRequest)
         } else {
-            val token = runBlocking { authManager.getAccessToken() }
+            val token = runBlocking { authManager.get().getAccessToken() }
             val newRequest = originalRequest.newBuilder()
                 .header(ApiConfiguration.AUTHORIZATION, "${ApiConfiguration.BEARER}$token")
                 .build()
@@ -44,18 +44,18 @@ class NetworkService @Inject constructor(
             response.close()
 
             // Try to refresh token
-            val refreshed = runBlocking { authManager.refreshToken() }
+            val refreshed = runBlocking { authManager.get().refreshToken() }
 
             if (refreshed) {
                 // Retry with new token
-                val token = runBlocking { authManager.getAccessToken() }
+                val token = runBlocking { authManager.get().getAccessToken() }
                 val newRequest = chain.request().newBuilder()
                     .header(ApiConfiguration.AUTHORIZATION, "${ApiConfiguration.BEARER}$token")
                     .build()
                 chain.proceed(newRequest)
             } else {
                 // Logout user
-                runBlocking { authManager.logout() }
+                runBlocking { authManager.get().logout() }
                 response
             }
         } else {
