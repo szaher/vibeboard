@@ -13,7 +13,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class NetworkService @Inject constructor(
+class NetworkService constructor(
     private val authManager: dagger.Lazy<AuthManager>
 ) {
     private val loggingInterceptor = HttpLoggingInterceptor().apply {

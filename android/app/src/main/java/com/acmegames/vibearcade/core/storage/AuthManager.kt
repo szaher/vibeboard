@@ -21,7 +21,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class AuthManager @Inject constructor(
+class AuthManager constructor(
     private val dataStore: DataStore<Preferences>,
     private val networkService: dagger.Lazy<NetworkService>,
     private val gson: Gson
