@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/szaher/mobile-game/backend/internal/models"
 	"math/rand"
+
+	"github.com/google/uuid"
+	"github.com/szaher/vibeboard/backend/internal/models"
 )
 
 type DominoTile struct {

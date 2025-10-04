@@ -3,8 +3,9 @@ package game
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/google/uuid"
-	"github.com/szaher/mobile-game/backend/internal/models"
+	"github.com/szaher/vibeboard/backend/internal/models"
 )
 
 type GameEngine interface {

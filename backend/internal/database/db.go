@@ -3,12 +3,13 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/szaher/mobile-game/backend/internal/models"
-	"github.com/szaher/mobile-game/backend/pkg/config"
+	"github.com/szaher/vibeboard/backend/internal/models"
+	"github.com/szaher/vibeboard/backend/pkg/config"
 )
 
 type DB struct {
@@ -196,7 +197,7 @@ func (db *DB) GetGames(status, gameType string, limit, offset int) ([]*models.Ga
 	}
 
 	if len(conditions) > 0 {
-		query += " WHERE " + fmt.Sprintf("%s", conditions[0])
+		query += " WHERE " + conditions[0]
 		for i := 1; i < len(conditions); i++ {
 			query += " AND " + conditions[i]
 		}
@@ -209,7 +210,11 @@ func (db *DB) GetGames(status, gameType string, limit, offset int) ([]*models.Ga
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Error closing rows: %v", err)
+		}
+	}()
 
 	var games []*models.Game
 	for rows.Next() {
@@ -248,7 +253,11 @@ func (db *DB) GetGameMoves(gameID uuid.UUID) ([]*models.Move, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Error closing rows: %v", err)
+		}
+	}()
 
 	var moves []*models.Move
 	for rows.Next() {

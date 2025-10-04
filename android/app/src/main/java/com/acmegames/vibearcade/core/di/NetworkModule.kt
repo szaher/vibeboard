@@ -40,7 +40,7 @@ object NetworkModule {
     @Singleton
     fun provideAuthManager(
         dataStore: DataStore<Preferences>,
-        networkService: NetworkService,
+        networkService: dagger.Lazy<NetworkService>,
         gson: Gson
     ): AuthManager {
         return AuthManager(dataStore, networkService, gson)
@@ -48,7 +48,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideNetworkService(authManager: AuthManager): NetworkService {
+    fun provideNetworkService(authManager: dagger.Lazy<AuthManager>): NetworkService {
         return NetworkService(authManager)
     }
 

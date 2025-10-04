@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/szaher/mobile-game/backend/internal/auth"
+	"github.com/szaher/vibeboard/backend/internal/auth"
 )
 
 func AuthMiddleware(jwtManager *auth.JWTManager) gin.HandlerFunc {

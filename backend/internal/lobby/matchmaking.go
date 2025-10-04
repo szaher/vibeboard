@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"github.com/szaher/mobile-game/backend/internal/database"
-	"github.com/szaher/mobile-game/backend/internal/game"
-	"github.com/szaher/mobile-game/backend/internal/models"
+	"github.com/szaher/vibeboard/backend/internal/database"
+	"github.com/szaher/vibeboard/backend/internal/game"
+	"github.com/szaher/vibeboard/backend/internal/models"
 )
 
 type MatchmakingService struct {

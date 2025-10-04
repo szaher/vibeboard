@@ -1,0 +1,485 @@
+name: Release Build
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build for release'
+        required: true
+        default: 'v1.0.0'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-backend:
+    name: Build Backend Release
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.tag || github.ref }}
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-release-${{ hashFiles('backend/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-release-
+
+    - name: Get version info
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.tag }}"
+        elif [ "${{ github.event_name }}" = "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/}"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "version_clean=${VERSION#v}" >> $GITHUB_OUTPUT
+
+    - name: Build backend binaries
+      working-directory: ./backend
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        COMMIT_SHA="${{ github.sha }}"
+        BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        # Build for multiple platforms
+        PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
+
+        mkdir -p ../release-artifacts
+
+        for platform in "${PLATFORMS[@]}"; do
+          OS=${platform%/*}
+          ARCH=${platform#*/}
+
+          echo "Building for $OS/$ARCH..."
+
+          CGO_ENABLED=0 GOOS=$OS GOARCH=$ARCH go build \
+            -ldflags="-X main.Version=${VERSION} -X main.Commit=${COMMIT_SHA} -X main.BuildTime=${BUILD_TIME}" \
+            -o "../release-artifacts/vibe-arcade-backend-${OS}-${ARCH}$([ "$OS" = "windows" ] && echo ".exe" || echo "")" \
+            cmd/server/main.go
+        done
+
+    - name: Create backend archive
+      run: |
+        cd release-artifacts
+        tar -czf vibe-arcade-backend-${{ steps.version.outputs.version_clean }}.tar.gz vibe-arcade-backend-*
+
+        # Create checksums
+        sha256sum vibe-arcade-backend-* > checksums.txt
+
+    - name: Upload backend artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-release-${{ steps.version.outputs.version_clean }}
+        path: |
+          release-artifacts/vibe-arcade-backend-${{ steps.version.outputs.version_clean }}.tar.gz
+          release-artifacts/checksums.txt
+        retention-days: 30
+
+  build-android:
+    name: Build Android Release
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.tag || github.ref }}
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-release-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-release-
+
+    - name: Get version info
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.tag }}"
+        elif [ "${{ github.event_name }}" = "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/}"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "version_clean=${VERSION#v}" >> $GITHUB_OUTPUT
+
+    - name: Update version in build.gradle
+      working-directory: ./android
+      run: |
+        VERSION_NAME="${{ steps.version.outputs.version_clean }}"
+        VERSION_CODE=$(echo "$VERSION_NAME" | sed 's/\.//g' | head -c 8)
+
+        sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" app/build.gradle
+        sed -i "s/versionName \"[^\"]*\"/versionName \"$VERSION_NAME\"/" app/build.gradle
+
+    - name: Grant execute permission for gradlew
+      working-directory: ./android
+      run: chmod +x gradlew
+
+    - name: Build release APK
+      working-directory: ./android
+      run: |
+        # Create a release keystore for CI builds
+        keytool -genkey -v -keystore release-key.keystore -alias release -keyalg RSA -keysize 2048 -validity 10000 \
+          -dname "CN=Vibe Arcade, OU=Release, O=Vibe Arcade, L=Release, S=Release, C=US" \
+          -storepass release123 -keypass release123
+
+        ./gradlew assembleRelease \
+          -Pandroid.injected.signing.store.file=../release-key.keystore \
+          -Pandroid.injected.signing.store.password=release123 \
+          -Pandroid.injected.signing.key.alias=release \
+          -Pandroid.injected.signing.key.password=release123
+
+    - name: Build App Bundle (AAB)
+      working-directory: ./android
+      run: |
+        ./gradlew bundleRelease \
+          -Pandroid.injected.signing.store.file=../release-key.keystore \
+          -Pandroid.injected.signing.store.password=release123 \
+          -Pandroid.injected.signing.key.alias=release \
+          -Pandroid.injected.signing.key.password=release123
+
+    - name: Rename and organize artifacts
+      working-directory: ./android
+      run: |
+        mkdir -p ../release-artifacts/android
+
+        # Copy and rename APK
+        cp app/build/outputs/apk/release/app-release.apk \
+           ../release-artifacts/android/vibe-arcade-${{ steps.version.outputs.version_clean }}.apk
+
+        # Copy and rename AAB
+        cp app/build/outputs/bundle/release/app-release.aab \
+           ../release-artifacts/android/vibe-arcade-${{ steps.version.outputs.version_clean }}.aab
+
+        # Create checksums
+        cd ../release-artifacts/android
+        sha256sum *.apk *.aab > checksums.txt
+
+    - name: Upload Android artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-release-${{ steps.version.outputs.version_clean }}
+        path: |
+          release-artifacts/android/vibe-arcade-${{ steps.version.outputs.version_clean }}.apk
+          release-artifacts/android/vibe-arcade-${{ steps.version.outputs.version_clean }}.aab
+          release-artifacts/android/checksums.txt
+        retention-days: 30
+
+  build-ios:
+    name: Build iOS Release
+    runs-on: macos-14
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.tag || github.ref }}
+
+    - name: Select Xcode version
+      run: sudo xcode-select -switch /Applications/Xcode_15.0.app/Contents/Developer
+
+    - name: Cache derived data
+      uses: actions/cache@v4
+      with:
+        path: ~/Library/Developer/Xcode/DerivedData
+        key: ${{ runner.os }}-xcode-release-${{ hashFiles('ios/**/*.pbxproj') }}
+        restore-keys: |
+          ${{ runner.os }}-xcode-release-
+
+    - name: Get version info
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.tag }}"
+        elif [ "${{ github.event_name }}" = "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/}"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "version_clean=${VERSION#v}" >> $GITHUB_OUTPUT
+
+    - name: Install dependencies
+      working-directory: ./ios
+      run: |
+        # Check if Podfile exists and install CocoaPods dependencies
+        if [ -f "Podfile" ]; then
+          sudo gem install cocoapods
+          pod install
+        fi
+
+    - name: Update version in project
+      working-directory: ./ios
+      run: |
+        VERSION="${{ steps.version.outputs.version_clean }}"
+        BUILD_NUMBER=$(date +%Y%m%d%H%M)
+
+        # Update Info.plist with new version
+        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" VibeArcade/Info.plist || true
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" VibeArcade/Info.plist || true
+
+    - name: Build iOS app for release
+      working-directory: ./ios
+      run: |
+        mkdir -p ../release-artifacts/ios
+
+        # Build for iOS device (without code signing for CI)
+        xcodebuild \
+          -project VibeArcade.xcodeproj \
+          -scheme VibeArcade \
+          -configuration Release \
+          -destination 'generic/platform=iOS' \
+          -archivePath ../release-artifacts/ios/VibeArcade.xcarchive \
+          archive \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          PROVISIONING_PROFILE=""
+
+    - name: Export IPA (for distribution)
+      working-directory: ./ios
+      run: |
+        # Create export options
+        cat > ../release-artifacts/ios/ExportOptions.plist << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>uploadBitcode</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <false/>
+            <key>signingStyle</key>
+            <string>manual</string>
+        </dict>
+        </plist>
+        EOF
+
+        # Export IPA (this will fail without proper certificates, but we'll create the archive)
+        xcodebuild \
+          -exportArchive \
+          -archivePath ../release-artifacts/ios/VibeArcade.xcarchive \
+          -exportPath ../release-artifacts/ios \
+          -exportOptionsPlist ../release-artifacts/ios/ExportOptions.plist || echo "IPA export failed (expected without certificates)"
+
+        # Create a tarball of the archive for download
+        cd ../release-artifacts/ios
+        tar -czf vibe-arcade-ios-${{ steps.version.outputs.version_clean }}.tar.gz VibeArcade.xcarchive
+
+        # Create checksums
+        sha256sum vibe-arcade-ios-*.tar.gz > checksums.txt || echo "Creating checksums for available files"
+
+    - name: Upload iOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-release-${{ steps.version.outputs.version_clean }}
+        path: |
+          release-artifacts/ios/vibe-arcade-ios-${{ steps.version.outputs.version_clean }}.tar.gz
+          release-artifacts/ios/checksums.txt
+        retention-days: 30
+
+  build-docker:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.tag || github.ref }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Get version info
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.tag }}"
+        elif [ "${{ github.event_name }}" = "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/}"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "version_clean=${VERSION#v}" >> $GITHUB_OUTPUT
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=${{ steps.version.outputs.version_clean }}
+          type=raw,value=release-latest
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        file: ./backend/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+        build-args: |
+          VERSION=${{ steps.version.outputs.version }}
+          BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
+
+  create-release-assets:
+    name: Attach Assets to Release
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-android, build-ios, build-docker]
+    if: github.event_name == 'release' || github.event_name == 'push'
+
+    steps:
+    - name: Get version info
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.tag }}"
+        elif [ "${{ github.event_name }}" = "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/}"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "version_clean=${VERSION#v}" >> $GITHUB_OUTPUT
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./all-artifacts
+
+    - name: Organize release assets
+      run: |
+        mkdir -p release-assets
+
+        # Copy backend artifacts
+        cp all-artifacts/backend-release-*/vibe-arcade-backend-*.tar.gz release-assets/
+        cp all-artifacts/backend-release-*/checksums.txt release-assets/backend-checksums.txt
+
+        # Copy Android artifacts
+        cp all-artifacts/android-release-*/vibe-arcade-*.apk release-assets/
+        cp all-artifacts/android-release-*/vibe-arcade-*.aab release-assets/
+        cp all-artifacts/android-release-*/checksums.txt release-assets/android-checksums.txt
+
+        # Copy iOS artifacts
+        cp all-artifacts/ios-release-*/vibe-arcade-ios-*.tar.gz release-assets/
+        cp all-artifacts/ios-release-*/checksums.txt release-assets/ios-checksums.txt
+
+        # Create a combined checksum file
+        cat release-assets/*-checksums.txt > release-assets/all-checksums.txt
+
+        ls -la release-assets/
+
+    - name: Upload to release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          release-assets/*
+        tag_name: ${{ steps.version.outputs.version }}
+        name: Release ${{ steps.version.outputs.version }}
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.version, 'rc') || contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') }}
+
+    - name: Upload artifacts for manual download
+      if: github.event_name != 'release'
+      uses: actions/upload-artifact@v4
+      with:
+        name: complete-release-${{ steps.version.outputs.version_clean }}
+        path: release-assets/
+        retention-days: 90
+
+  notify-completion:
+    name: Notify Build Completion
+    runs-on: ubuntu-latest
+    needs: [create-release-assets]
+    if: always()
+
+    steps:
+    - name: Get version info
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.tag }}"
+        elif [ "${{ github.event_name }}" = "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/}"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+    - name: Notify success
+      if: needs.create-release-assets.result == 'success'
+      run: |
+        echo "✅ Release build completed successfully for ${{ steps.version.outputs.version }}"
+        echo "📦 Artifacts built:"
+        echo "  - Backend binaries (Linux, macOS, Windows)"
+        echo "  - Android APK and AAB"
+        echo "  - iOS archive"
+        echo "  - Docker images"
+
+    - name: Notify failure
+      if: needs.create-release-assets.result == 'failure'
+      run: |
+        echo "❌ Release build failed for ${{ steps.version.outputs.version }}"
+        echo "Please check the workflow logs for details."
+        exit 1

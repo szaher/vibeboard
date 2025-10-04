@@ -6,14 +6,14 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/szaher/mobile-game/backend/api"
-	"github.com/szaher/mobile-game/backend/internal/auth"
-	"github.com/szaher/mobile-game/backend/internal/database"
-	"github.com/szaher/mobile-game/backend/internal/game"
-	"github.com/szaher/mobile-game/backend/internal/lobby"
-	"github.com/szaher/mobile-game/backend/internal/models"
-	"github.com/szaher/mobile-game/backend/internal/websocket"
-	"github.com/szaher/mobile-game/backend/pkg/config"
+	"github.com/szaher/vibeboard/backend/api"
+	"github.com/szaher/vibeboard/backend/internal/auth"
+	"github.com/szaher/vibeboard/backend/internal/database"
+	"github.com/szaher/vibeboard/backend/internal/game"
+	"github.com/szaher/vibeboard/backend/internal/lobby"
+	"github.com/szaher/vibeboard/backend/internal/models"
+	"github.com/szaher/vibeboard/backend/internal/websocket"
+	"github.com/szaher/vibeboard/backend/pkg/config"
 )
 
 func main() {
@@ -30,7 +30,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("Error closing database: %v", err)
+		}
+	}()
 
 	// Initialize Redis
 	redisClient := redis.NewClient(&redis.Options{

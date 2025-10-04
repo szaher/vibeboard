@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/szaher/mobile-game/backend/internal/auth"
-	"github.com/szaher/mobile-game/backend/internal/database"
-	"github.com/szaher/mobile-game/backend/internal/models"
+	"github.com/szaher/vibeboard/backend/internal/auth"
+	"github.com/szaher/vibeboard/backend/internal/database"
+	"github.com/szaher/vibeboard/backend/internal/models"
 )
 
 type Handler struct {
