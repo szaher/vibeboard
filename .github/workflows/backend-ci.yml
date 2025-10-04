@@ -144,10 +144,20 @@ jobs:
       working-directory: ./backend
       run: go mod download
 
+    - name: Verify code builds
+      working-directory: ./backend
+      run: go build ./...
+
     - name: Run Gosec Security Scanner
       working-directory: ./backend
       run: |
         go install github.com/securego/gosec/v2/cmd/gosec@latest
+        # Run gosec on each package individually for better error isolation
+        for pkg in $(go list ./...); do
+          echo "Scanning package: $pkg"
+          gosec $pkg || echo "Warning: gosec failed on $pkg"
+        done
+        # Run full scan to get overall results
         gosec ./...
 
     - name: Run govulncheck vulnerability scanner
