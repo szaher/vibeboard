@@ -150,11 +150,11 @@ jobs:
         go install github.com/securego/gosec/v2/cmd/gosec@latest
         gosec ./...
 
-    - name: Run Nancy vulnerability scanner
+    - name: Run govulncheck vulnerability scanner
       working-directory: ./backend
       run: |
-        go install github.com/sonatypecommunity/nancy@latest
-        go list -json -deps ./... | nancy sleuth
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck ./...
 
   build-image:
     name: Build Docker Image
